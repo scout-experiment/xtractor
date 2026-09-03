@@ -1,0 +1,21 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "xtractor"
+version = "0.1.0"
+description = "Read-only guardrail for twitter-cli"
+requires-python = ">=3.10"
+dependencies = [
+    "twitter-cli @ git+https://github.com/Blacksuite/twitter-cli.git@456c32512bd5129c5ea9bc8f3d8081b9cefc3bb4"
+]
+
+[project.scripts]
+xtractor = "xtractor_cli.cli:main"
+
+[tool.hatch.metadata]
+allow-direct-references = true
+
+[tool.hatch.build.targets.wheel]
+packages = ["xtractor_cli"]
