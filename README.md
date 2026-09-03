@@ -43,6 +43,13 @@ python -m venv .venv
 
 Alternative — prebuilt single file (no venv, no git): build it once with `bash build_zipapp.sh`, then copy `dist/xtractor.pyz` to any machine with `python3` >= 3.10 (same OS/architecture — it bundles native extensions) and run `python3 xtractor.pyz status --yaml` (or `./xtractor.pyz`; the file is executable).
 
+Or download the prebuilt release (same constraints) — private repo, so this needs `gh` auth; plain `curl -LO` only works once the repo is public:
+
+```bash
+gh release download v0.1.0 -R scout-experiment/xtractor -p xtractor.pyz
+chmod +x xtractor.pyz && ./xtractor.pyz status --yaml
+```
+
 ## Authentication
 
 `xtractor` itself is unauthenticated; the pinned `twitter-cli` backend reads your X session.
