@@ -13,8 +13,8 @@
 `xtractor` never mutates your X account. Every invocation is checked against a command allowlist (`READ_COMMANDS` in `xtractor_cli/cli.py`) before anything runs:
 
 - Commands outside the allowlist are rejected with exit code `2` — no subprocess is started.
-- Missing backend executable exits `127`.
-- The backend is launched with `subprocess.run()` on an argument list, never a shell string.
+- The backend runs in-process (`xtractor_cli.backend.main()`); the only environment mutation is the validated `auth_token`/`ct0` pair applied after all checks pass.
+- Missing backend dependency exits `127`.
 
 > [!IMPORTANT]
 > Cookie values are credentials. They are never printed, logged, tested, committed, or returned; keep cookie files and `.env` outside repositories with `chmod 600`.
@@ -40,6 +40,8 @@ Alternative — manual setup:
 python -m venv .venv
 .venv/bin/python -m pip install --force-reinstall .
 ```
+
+Alternative — prebuilt single file (no venv, no git): build it once with `bash build_zipapp.sh`, then copy `dist/xtractor.pyz` to any machine with `python3` >= 3.10 (same OS/architecture — it bundles native extensions) and run `python3 xtractor.pyz status --yaml` (or `./xtractor.pyz`; the file is executable).
 
 ## Authentication
 
@@ -75,9 +77,7 @@ Minimal accepted shape (values shown are placeholders):
 ]
 ```
 
-Validation requires both cookies from an `x.com`/`twitter.com` domain; other entries in the array are ignored. If you see `xtractor: cookie file lacks x.com auth_token or ct0`, the export came from a different site's domain or the account was not logged in to x.com when exporting — re-export from an x.com tab while logged in.
-
-Before any cookie reaches the backend, `xtractor_cli/cli.py` validates the file: it must be a regular file (symlinks rejected), owner-readable (`chmod 600`), at most 1 MiB, valid UTF-8 JSON as a Cookie-Editor array, and every cookie domain must be `x.com`, `twitter.com`, or a subdomain. Only `auth_token` and `ct0` are extracted and passed to the child-process environment; nothing else from the file is forwarded.
+Before any cookie reaches the backend, `xtractor_cli/cli.py` validates the file: it must be a regular file (symlinks rejected), owner-readable (`chmod 600`), at most 1 MiB, valid UTF-8 JSON as a Cookie-Editor array, and every cookie domain must be `x.com`, `twitter.com`, or a subdomain. Only `auth_token` and `ct0` are extracted and applied to the process environment after validation passes; nothing else from the file is forwarded.
 
 ## Usage
 
@@ -125,4 +125,4 @@ Run tests and syntax checks with the repository-local interpreter:
 .venv/bin/python -m compileall -q xtractor_cli tests
 ```
 
-The suite uses stdlib `unittest` and mocks `subprocess.run`, so no network access is needed; it covers read-command forwarding, write rejection, cookie validation (permissions, symlinks, untrusted domains), missing backend, and missing commands. The console script runs code from the installed wheel — reinstall after changing `xtractor_cli/` before CLI smoke tests. Build distributions with `python -m build` (Hatchling) if the `build` package is installed.
+The suite uses stdlib `unittest` and mocks `xtractor_cli.backend.main`, so no network access is needed; it covers read-command forwarding, write rejection, cookie validation (permissions, symlinks, untrusted domains), missing backend, and missing commands. The console script runs code from the installed wheel — reinstall after changing `xtractor_cli/` before CLI smoke tests. Build the single-file distribution with `bash build_zipapp.sh` (output: `dist/xtractor.pyz`).

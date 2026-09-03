@@ -13,47 +13,63 @@ from xtractor_cli.cli import main
 
 
 class MainTests(unittest.TestCase):
-    @patch("xtractor_cli.cli.subprocess.run")
-    @patch("xtractor_cli.cli.DEFAULT_COOKIE_FILE", Path("/nonexistent/cookies.json"))
-    def test_forwards_read_command_and_exit_code(self, run):
-        run.return_value.returncode = 7
+    """Wrapper delegates to the project backend in-process (zipapp-safe)."""
 
-        self.assertEqual(main(["tweet", "123", "--json"]), 7)
-        run.assert_called_once_with(
-            [str(Path(sys.executable).with_name("python")), "-m", "xtractor_cli.backend",
-             "tweet", "123", "--json"],
-            check=False,
-            env=None,
+    def _cookie_file(self, directory: str, name: str = "cookies.json", **values: str) -> Path:
+        cookie_file = Path(directory) / name
+        defaults = {
+            "auth_token": "fake-auth",
+            "ct0": "fake-ct0",
+        }
+        defaults.update(values)
+        cookie_file.write_text(
+            json.dumps(
+                [
+                    {"name": name_, "value": value, "domain": ".x.com"}
+                    for name_, value in defaults.items()
+                ]
+            ),
+            encoding="utf-8",
         )
-    @patch("xtractor_cli.cli.subprocess.run")
-    def test_loads_cookie_editor_json_into_child_env(self, run):
-        run.return_value.returncode = 0
-        with tempfile.TemporaryDirectory() as directory:
-            cookie_file = Path(directory) / "cookies.json"
-            cookie_file.write_text(
-                json.dumps(
-                    [
-                        {"name": "auth_token", "value": "fake-auth", "domain": ".x.com"},
-                        {"name": "ct0", "value": "fake-ct0", "domain": ".x.com"},
-                    ]
-                ),
-                encoding="utf-8",
-            )
-            cookie_file.chmod(0o600)
+        cookie_file.chmod(0o600)
+        return cookie_file
 
+    def _backend_main_recorder(self, return_value: int = 0):
+        mock = patch(
+            "xtractor_cli.backend.main",
+            side_effect=lambda: (self.recorded_env.update(os.environ), return_value)[1],
+        )
+        return mock
+
+    def setUp(self) -> None:
+        self.recorded_env: dict[str, str] = {}
+
+    @patch("xtractor_cli.backend.main", return_value=7)
+    @patch("xtractor_cli.cli.DEFAULT_COOKIE_FILE", Path("/nonexistent/cookies.json"))
+    def test_forwards_read_command_via_sys_argv(self, backend_main):
+        self.assertEqual(main(["tweet", "123", "--json"]), 7)
+        backend_main.assert_called_once_with()
+
+    def test_rejects_non_read_command_before_backend(self):
+        with patch("xtractor_cli.backend.main") as backend_main:
+            self.assertEqual(main(["post", "nope"]), 2)
+        backend_main.assert_not_called()
+
+    def test_loads_cookie_editor_json_into_environ(self):
+        with tempfile.TemporaryDirectory() as directory:
+            cookie_file = self._cookie_file(directory)
             with patch.dict(
                 os.environ,
                 {"XTRACTOR_COOKIE_FILE": str(cookie_file)},
                 clear=True,
-            ):
+            ), self._backend_main_recorder():
                 self.assertEqual(main(["status", "--yaml"]), 0)
 
-        child_env = run.call_args.kwargs["env"]
-        self.assertEqual(child_env["TWITTER_AUTH_TOKEN"], "fake-auth")
-        self.assertEqual(child_env["TWITTER_CT0"], "fake-ct0")
+        self.assertEqual(self.recorded_env.get("TWITTER_AUTH_TOKEN"), "fake-auth")
+        self.assertEqual(self.recorded_env.get("TWITTER_CT0"), "fake-ct0")
 
-    @patch("xtractor_cli.cli.subprocess.run")
-    def test_rejects_cookie_file_accessible_by_group_or_others(self, run):
+    @patch("xtractor_cli.backend.main")
+    def test_rejects_cookie_file_accessible_by_group_or_others(self, backend_main):
         with tempfile.TemporaryDirectory() as directory:
             cookie_file = Path(directory) / "cookies.json"
             cookie_file.write_text("[]", encoding="utf-8")
@@ -66,11 +82,11 @@ class MainTests(unittest.TestCase):
             ):
                 self.assertEqual(main(["status"]), 2)
 
-        run.assert_not_called()
+        backend_main.assert_not_called()
 
     @unittest.skipIf(os.name == "nt", "symlink creation requires extra privileges")
-    @patch("xtractor_cli.cli.subprocess.run")
-    def test_rejects_cookie_file_symlink(self, run):
+    @patch("xtractor_cli.backend.main")
+    def test_rejects_cookie_file_symlink(self, backend_main):
         with tempfile.TemporaryDirectory() as directory:
             target = Path(directory) / "cookies.json"
             target.write_text("[]", encoding="utf-8")
@@ -78,87 +94,48 @@ class MainTests(unittest.TestCase):
             cookie_file = Path(directory) / "cookies-link.json"
             cookie_file.symlink_to(target)
 
-            with patch.dict(
-                os.environ,
-                {"XTRACTOR_COOKIE_FILE": str(cookie_file)},
-                clear=True,
-            ):
-                self.assertEqual(main(["status"]), 2)
-
-        run.assert_not_called()
-    @patch("xtractor_cli.cli.subprocess.run")
-    def test_default_cookie_file_used_when_env_unset(self, run):
-        run.return_value.returncode = 0
+    def test_default_cookie_file_used_when_env_unset(self):
         with tempfile.TemporaryDirectory() as directory:
-            cookie_file = Path(directory) / "cookies.json"
-            cookie_file.write_text(
-                json.dumps(
-                    [
-                        {"name": "auth_token", "value": "fake-auth", "domain": ".x.com"},
-                        {"name": "ct0", "value": "fake-ct0", "domain": ".x.com"},
-                    ]
-                ),
-                encoding="utf-8",
-            )
-            cookie_file.chmod(0o600)
+            cookie_file = self._cookie_file(directory)
 
             with patch.dict(os.environ, {}, clear=True), patch(
                 "xtractor_cli.cli.DEFAULT_COOKIE_FILE", cookie_file
-            ):
+            ), self._backend_main_recorder():
                 self.assertEqual(main(["status", "--yaml"]), 0)
 
-        child_env = run.call_args.kwargs["env"]
-        self.assertEqual(child_env["TWITTER_AUTH_TOKEN"], "fake-auth")
-        self.assertEqual(child_env["TWITTER_CT0"], "fake-ct0")
+        self.assertEqual(self.recorded_env.get("TWITTER_AUTH_TOKEN"), "fake-auth")
+        self.assertEqual(self.recorded_env.get("TWITTER_CT0"), "fake-ct0")
 
-    @patch("xtractor_cli.cli.subprocess.run")
+    @patch("xtractor_cli.backend.main", return_value=0)
     @patch("xtractor_cli.cli.DEFAULT_COOKIE_FILE", Path("/nonexistent/cookies.json"))
-    def test_missing_default_cookie_file_keeps_browser_mode(self, run):
-        run.return_value.returncode = 0
+    def test_missing_default_cookie_file_keeps_browser_mode(self, backend_main):
+        snapshot = dict(os.environ)
         with patch.dict(os.environ, {}, clear=True):
             self.assertEqual(main(["status"]), 0)
 
-        self.assertIsNone(run.call_args.kwargs["env"])
+        self.assertEqual(os.environ, snapshot)
 
-    @patch("xtractor_cli.cli.subprocess.run")
-    def test_env_var_wins_over_default_cookie_file(self, run):
-        run.return_value.returncode = 0
+    def test_env_var_wins_over_default_cookie_file(self):
         with tempfile.TemporaryDirectory() as directory:
-            default_cookie = Path(directory) / "cookies.json"
-            default_cookie.write_text(
-                json.dumps(
-                    [
-                        {"name": "auth_token", "value": "fake-auth", "domain": ".x.com"},
-                        {"name": "ct0", "value": "fake-ct0", "domain": ".x.com"},
-                    ]
-                ),
-                encoding="utf-8",
+            default_cookie = self._cookie_file(directory)
+            env_cookie = self._cookie_file(
+                directory, name="env-cookies.json",
+                auth_token="env-auth", ct0="env-ct0",
             )
-            default_cookie.chmod(0o600)
-            env_cookie = Path(directory) / "env-cookies.json"
-            env_cookie.write_text(
-                json.dumps(
-                    [
-                        {"name": "auth_token", "value": "env-auth", "domain": ".x.com"},
-                        {"name": "ct0", "value": "env-ct0", "domain": ".x.com"},
-                    ]
-                ),
-                encoding="utf-8",
-            )
-            env_cookie.chmod(0o600)
 
             with patch.dict(
                 os.environ,
                 {"XTRACTOR_COOKIE_FILE": str(env_cookie)},
                 clear=True,
-            ), patch("xtractor_cli.cli.DEFAULT_COOKIE_FILE", default_cookie):
+            ), patch("xtractor_cli.cli.DEFAULT_COOKIE_FILE", default_cookie), \
+            self._backend_main_recorder():
                 self.assertEqual(main(["status", "--yaml"]), 0)
 
-        child_env = run.call_args.kwargs["env"]
-        self.assertEqual(child_env["TWITTER_AUTH_TOKEN"], "env-auth")
-        self.assertEqual(child_env["TWITTER_CT0"], "env-ct0")
-    @patch("xtractor_cli.cli.subprocess.run")
-    def test_rejects_cookie_names_from_untrusted_domains(self, run):
+        self.assertEqual(self.recorded_env.get("TWITTER_AUTH_TOKEN"), "env-auth")
+        self.assertEqual(self.recorded_env.get("TWITTER_CT0"), "env-ct0")
+
+    @patch("xtractor_cli.backend.main")
+    def test_rejects_cookie_names_from_untrusted_domains(self, backend_main):
         with tempfile.TemporaryDirectory() as directory:
             cookie_file = Path(directory) / "cookies.json"
             cookie_file.write_text(
@@ -179,19 +156,43 @@ class MainTests(unittest.TestCase):
             ):
                 self.assertEqual(main(["status"]), 2)
 
-        run.assert_not_called()
-
-    @patch("xtractor_cli.cli.subprocess.run")
-    def test_rejects_write_command(self, run):
-        self.assertEqual(main(["post", "nope"]), 2)
-        run.assert_not_called()
-
-    @patch("xtractor_cli.cli.subprocess.run", side_effect=FileNotFoundError)
-    def test_reports_missing_backend(self, run):
-        self.assertEqual(main(["status"]), 127)
+        backend_main.assert_not_called()
 
     def test_requires_command(self):
-        self.assertEqual(main([]), 2)
+        with patch("xtractor_cli.backend.main") as backend_main:
+            self.assertEqual(main([]), 2)
+        backend_main.assert_not_called()
+
+    @patch("xtractor_cli.backend.main", side_effect=ImportError("twitter_cli missing"))
+    def test_reports_missing_backend(self, backend_main):
+        self.assertEqual(main(["status"]), 127)
+
+    @patch("xtractor_cli.backend.main", return_value=0)
+    def test_does_not_mutate_environ_before_validation(self, backend_main):
+        with tempfile.TemporaryDirectory() as directory:
+            cookie_file = Path(directory) / "cookies.json"
+            cookie_file.write_text("[]", encoding="utf-8")
+            cookie_file.chmod(0o644)
+            with patch.dict(
+                os.environ,
+                {"XTRACTOR_COOKIE_FILE": str(cookie_file)},
+                clear=True,
+            ):
+                self.assertEqual(main(["status"]), 2)
+        self.assertNotIn("TWITTER_AUTH_TOKEN", os.environ)
+
+    def test_argv_argument_alignment(self):
+        """Explicit argv lands in sys.argv for the backend's click parser."""
+        seen: dict[str, object] = {}
+
+        def fake_backend_main() -> int:
+            seen["argv"] = list(sys.argv)
+            return 3
+
+        with patch("xtractor_cli.backend.main", side_effect=fake_backend_main), patch(
+            "xtractor_cli.cli.DEFAULT_COOKIE_FILE", Path("/nonexistent/cookies.json")
+        ):
+            self.assertEqual(main(["user", "someone", "--json"]), 3)
 
 
 class BackendRegressionTests(unittest.TestCase):
@@ -223,16 +224,20 @@ class BackendRegressionTests(unittest.TestCase):
                 live,
             )
 
-    @patch("xtractor_cli.cli.subprocess.run")
-    def test_wrapper_launches_backend_bootstrap_module(self, run):
-        run.return_value.returncode = 0
-
-        # The wrapper must boot the project backend module (which applies
-        # the live queryId overrides) rather than the upstream twitter CLI.
+    @patch("xtractor_cli.backend.main", return_value=0)
+    @patch("xtractor_cli.cli.DEFAULT_COOKIE_FILE", Path("/nonexistent/cookies.json"))
+    def test_wrapper_calls_backend_bootstrap_in_process(self, backend_main):
+        # The wrapper must call the project backend module (which applies
+        # the live queryId overrides) rather than the upstream twitter CLI,
+        # in-process so a zipapp works without a sibling interpreter.
         self.assertEqual(main(["user-posts", "someone", "--max", "1"]), 0)
-        cmd = run.call_args.args[0]
-        self.assertIn("xtractor_cli.backend", " ".join(cmd[:4]))
-        self.assertIn("user-posts", cmd)
+        backend_main.assert_called_once_with()
+
+        import xtractor_cli.backend  # noqa: F401  (bootstrap ran on import)
+        self.assertIn(
+            "SXVCYB8XHSS25nzIljNtZA",
+            __import__("twitter_cli.graphql", fromlist=["x"]).FALLBACK_QUERY_IDS["UserTweets"],
+        )
 
 
 class QueryIdCacheTests(unittest.TestCase):

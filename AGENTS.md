@@ -10,8 +10,8 @@ Xtractor is a small Python CLI that exposes read-only Twitter/X operations. It v
 
 1. `main()` reads `argv` and rejects commands outside `READ_COMMANDS` with exit code `2`.
 2. If `XTRACTOR_COOKIE_FILE` is set, or the default `~/.config/xtractor/cookies.json` exists, `_cookie_env()` validates the Cookie-Editor JSON file and extracts `auth_token` and `ct0`.
-3. The wrapper starts the sibling `twitter` executable with `subprocess.run()` and returns its exit code.
-4. A missing backend returns `127`. Validation errors fail before the subprocess starts.
+3. The wrapper calls the project backend in-process (`xtractor_cli.backend.main()`), which resolves the live `UserTweets` queryId and delegates to the pinned `twitter-cli` CLI. This keeps the wrapper zipapp-safe (no sibling interpreter needed).
+4. A missing backend dependency returns `127`. Validation errors fail before the backend call.
 
 Keep this architecture synchronous, stateless, and thin. Put shared security checks at the wrapper boundary rather than in each command path.
 
@@ -47,8 +47,7 @@ Build support comes from Hatchling. If the `build` package is installed, create 
 - Return integer CLI exit codes. Print user-facing errors to `sys.stderr`.
 - Propagate the backend return code unchanged.
 - Fail closed: reject unknown commands, malformed cookies, unsafe permissions, symlinks, and untrusted domains before execution.
-- Pass subprocess arguments as a list with `shell=False` behavior. Never build shell command strings.
-- Copy `os.environ` only for the child process. Do not mutate global environment state.
+- The backend runs in-process: `main()` validates first, applies `auth_token`/`ct0` to `os.environ` only after validation passes, then calls `xtractor_cli.backend.main()` (via its own `sys.argv` alignment) and returns its exit code. No subprocess, no shell strings.
 - Keep credential values out of logs, errors, tests, documentation, and agent context.
 - No async, dependency-injection framework, persistent state, cache, or argument parser exists. Add one only when a concrete requirement needs it.
 
@@ -56,9 +55,8 @@ Build support comes from Hatchling. If the `build` package is installed, create 
 
 - `install.sh`: one-command installer (venv, pip install of the git-pinned dependency, skill placement).
 - `pyproject.toml`: package metadata, runtime dependency, wheel contents, and `xtractor` entry point.
-- `xtractor_cli/cli.py`: command allowlist, cookie validation, subprocess delegation, and exit-code behavior.
 - `xtractor_cli/backend.py`: project-owned launcher that resolves the live `UserTweets` queryId (24h disk cache at `~/.cache/xtractor/queryids.json`, overridable via `XTRACTOR_CACHE_DIR`; refreshes from the community twitter-openapi `placeholder.json`; falls back to a hardcoded constant on any network/cache failure) before delegating to the installed `twitter-cli` CLI.
-- `xtractor_cli/__init__.py`: package marker and package description.
+- `xtractor_cli/cli.py`: command allowlist, cookie validation, in-process backend delegation, and exit-code behavior.
 - `tests/test_cli.py`: complete current behavioral test suite.
 - `skill/SKILL.md`: supported reads, authentication workflow, and upstream failure policy.
 
@@ -79,10 +77,10 @@ Tests use stdlib `unittest` and `unittest.mock`; no pytest configuration exists.
 
 Follow current patterns in `tests/test_cli.py`:
 
-- Patch `xtractor_cli.cli.subprocess.run` to verify delegation without network access.
 - Use `tempfile.TemporaryDirectory()` for cookie files.
 - Use fake credential values only.
-- Assert exit codes and whether the backend starts.
-- Cover both accepted behavior and fail-closed rejection.
+- Patch `xtractor_cli.backend.main` to verify delegation without network access.
+
+`build_zipapp.sh` builds the single-file `dist/xtractor.pyz` (zipapp bundling `xtractor_cli` plus all runtime dependencies; native extensions are extracted once to a hash-keyed cache dir under `~/.cache/xtractor/` at first run).
 
 Before completion, run the unit suite and `compileall`. For CLI behavior changes, also run the actual `.venv/bin/xtractor` path. Current tests cover read-command forwarding, write rejection, cookie environment injection, unsafe permissions, symlink rejection, untrusted domains, missing backend, and missing commands. No coverage percentage is configured.

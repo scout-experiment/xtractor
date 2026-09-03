@@ -1,7 +1,6 @@
 import json
 import os
 import stat
-import subprocess
 import sys
 from pathlib import Path
 
@@ -87,24 +86,28 @@ def main(argv: list[str] | None = None) -> int:
         print(f"xtractor: read-only command required; rejected: {command}", file=sys.stderr)
         return 2
 
-    child_env = None
+    updates: dict[str, str] = {}
     cookie_file = os.environ.get("XTRACTOR_COOKIE_FILE") or (
         DEFAULT_COOKIE_FILE if DEFAULT_COOKIE_FILE.is_file() else None
     )
     if cookie_file:
         try:
-            child_env = os.environ.copy()
-            child_env.update(_cookie_env(Path(cookie_file).expanduser()))
+            updates = _cookie_env(Path(cookie_file).expanduser())
         except CookieFileError as exc:
             print(f"xtractor: {exc}", file=sys.stderr)
             return 2
 
+    # In-process backend launch (zipapp-safe). Environment updates are
+    # applied only after validation passes; this CLI process exits as soon
+    # as the backend call returns, so no restore is needed.
+    if argv is not None:
+        sys.argv = [sys.argv[0], *args]
+    os.environ.update(updates)
     try:
-        backend = Path(sys.executable).with_name("python")
-        cmd = [str(backend), "-m", "xtractor_cli.backend", *args]
-        return subprocess.run(cmd, check=False, env=child_env).returncode
-    except FileNotFoundError:
-        print("xtractor: twitter-cli is not installed", file=sys.stderr)
+        from xtractor_cli import backend
+        return backend.main()
+    except ImportError:
+        print("xtractor: backend unavailable", file=sys.stderr)
         return 127
 
 
