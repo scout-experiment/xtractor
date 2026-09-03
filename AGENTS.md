@@ -25,6 +25,7 @@ Keep this architecture synchronous, stateless, and thin. Put shared security che
 ## Development Commands
 
 Use Python 3.10 or newer and a virtual environment.
+For a one-command setup, run `./install.sh`: it creates `.venv`, installs the package plus the git-pinned dependency, and copies the skill to `~/.agents/skills/xtractor/`. The manual commands below remain as the alternative.
 
 ```bash
 python -m venv .venv
@@ -53,6 +54,7 @@ Build support comes from Hatchling. If the `build` package is installed, create 
 
 ## Important Files
 
+- `install.sh`: one-command installer (venv, pip install of the git-pinned dependency, skill placement).
 - `pyproject.toml`: package metadata, runtime dependency, wheel contents, and `xtractor` entry point.
 - `xtractor_cli/cli.py`: command allowlist, cookie validation, subprocess delegation, and exit-code behavior.
 - `xtractor_cli/backend.py`: project-owned launcher that resolves the live `UserTweets` queryId (24h disk cache at `~/.cache/xtractor/queryids.json`, overridable via `XTRACTOR_CACHE_DIR`; refreshes from the community twitter-openapi `placeholder.json`; falls back to a hardcoded constant on any network/cache failure) before delegating to the installed `twitter-cli` CLI.

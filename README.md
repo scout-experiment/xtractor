@@ -58,6 +58,24 @@ chmod 600 ~/.config/xtractor/cookies.json
 XTRACTOR_COOKIE_FILE=~/.config/xtractor/cookies.json xtractor status --yaml
 ```
 
+#### Getting cookies with Cookie-Editor
+
+1. Install the Cookie-Editor browser extension ([cookie-editor.com](https://cookie-editor.com)) and log in to x.com in that browser.
+2. On any x.com page, open Cookie-Editor from the toolbar.
+3. Click Export → Export as JSON (the array format, not Header String).
+4. Save the exported array to a file on the target machine, then continue with the `chmod 600` + `XTRACTOR_COOKIE_FILE` commands above.
+
+Minimal accepted shape (values shown are placeholders):
+
+```json
+[
+  {"name": "auth_token", "value": "fake-auth-token", "domain": ".x.com"},
+  {"name": "ct0", "value": "fake-ct0", "domain": ".x.com"}
+]
+```
+
+Validation requires both cookies from an `x.com`/`twitter.com` domain; other entries in the array are ignored. If you see `xtractor: cookie file lacks x.com auth_token or ct0`, the export came from a different site's domain or the account was not logged in to x.com when exporting — re-export from an x.com tab while logged in.
+
 Before any cookie reaches the backend, `xtractor_cli/cli.py` validates the file: it must be a regular file (symlinks rejected), owner-readable (`chmod 600`), at most 1 MiB, valid UTF-8 JSON as a Cookie-Editor array, and every cookie domain must be `x.com`, `twitter.com`, or a subdomain. Only `auth_token` and `ct0` are extracted and passed to the child-process environment; nothing else from the file is forwarded.
 
 ## Usage
@@ -85,6 +103,7 @@ Follow returned cursors only when you need more results. On `401`/`403`, refresh
 ## Query ID refresh
 
 X rotates its GraphQL `queryId`s over time. The pinned `twitter-cli` dependency hardcodes a fallback `UserTweets` ID that has gone stale, and X now answers that stale ID with HTTP 200 and an unrelated timeline — so upstream's error-based refresh path never triggers. `xtractor_cli/backend.py` therefore forces the queryId currently served by live x.com bundles and re-asserts it on every backend invocation, while keeping the pinned fork's authenticated `ClientTransaction` bootstrap intact. Other operations still resolve through the fork's own sources: a community-maintained `placeholder.json` and a scan of x.com's JavaScript bundles.
+The resolved queryId is cached on disk at `~/.cache/xtractor/queryids.json` with a 24-hour TTL, and the cache location can be overridden with the `XTRACTOR_CACHE_DIR` environment variable; on any network or cache failure, the backend falls back to the hardcoded constant.
 
 ## Update policy
 
