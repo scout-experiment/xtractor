@@ -21,17 +21,24 @@
 
 ## Quick start
 
-Requires Python >= 3.10. Dependencies are installed with pip into a local virtual environment:
+Install in one command (requires Python >= 3.10 and `git`; installs into a local `.venv` and copies the skill to `~/.agents/skills/xtractor/`):
+
+```bash
+git clone <repo-url> xtractor && cd xtractor
+./install.sh
+```
+
+Verify with a first read:
+
+```bash
+.venv/bin/xtractor status --yaml
+```
+
+Alternative — manual setup:
 
 ```bash
 python -m venv .venv
 .venv/bin/python -m pip install --force-reinstall .
-```
-
-This installs the `xtractor` console script into `.venv/bin/`. Verify with a first read:
-
-```bash
-.venv/bin/xtractor status --yaml
 ```
 
 ## Authentication
