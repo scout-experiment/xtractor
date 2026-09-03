@@ -27,6 +27,7 @@ For a remote machine, export `x.com` cookies as JSON with Cookie-Editor, transfe
 chmod 600 ~/.config/xtractor/cookies.json
 XTRACTOR_COOKIE_FILE=~/.config/xtractor/cookies.json xtractor status --yaml
 ```
+If `~/.config/xtractor/cookies.json` exists, it is picked up automatically — no env var needed.
 
 `xtractor` accepts a Cookie-Editor JSON array, checks file type/size/permissions and cookie domains, then passes only `auth_token` and `ct0` in child-process environment. Keep cookie files outside repositories. Cookie values must stay outside agent context: never request them in chat or print, copy, commit, or return them.
 

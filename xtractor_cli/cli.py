@@ -23,6 +23,7 @@ READ_COMMANDS = frozenset(
     }
 )
 TRUSTED_COOKIE_DOMAINS = {"x.com", "twitter.com"}
+DEFAULT_COOKIE_FILE = Path.home() / ".config" / "xtractor" / "cookies.json"
 
 
 class CookieFileError(ValueError):
@@ -87,7 +88,9 @@ def main(argv: list[str] | None = None) -> int:
         return 2
 
     child_env = None
-    cookie_file = os.environ.get("XTRACTOR_COOKIE_FILE")
+    cookie_file = os.environ.get("XTRACTOR_COOKIE_FILE") or (
+        DEFAULT_COOKIE_FILE if DEFAULT_COOKIE_FILE.is_file() else None
+    )
     if cookie_file:
         try:
             child_env = os.environ.copy()

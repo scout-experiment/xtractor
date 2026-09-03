@@ -9,7 +9,7 @@ Xtractor is a small Python CLI that exposes read-only Twitter/X operations. It v
 `xtractor` maps to `xtractor_cli.cli:main` through `pyproject.toml`.
 
 1. `main()` reads `argv` and rejects commands outside `READ_COMMANDS` with exit code `2`.
-2. If `XTRACTOR_COOKIE_FILE` exists, `_cookie_env()` validates a Cookie-Editor JSON file and extracts `auth_token` and `ct0`.
+2. If `XTRACTOR_COOKIE_FILE` is set, or the default `~/.config/xtractor/cookies.json` exists, `_cookie_env()` validates the Cookie-Editor JSON file and extracts `auth_token` and `ct0`.
 3. The wrapper starts the sibling `twitter` executable with `subprocess.run()` and returns its exit code.
 4. A missing backend returns `127`. Validation errors fail before the subprocess starts.
 

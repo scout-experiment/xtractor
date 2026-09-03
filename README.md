@@ -57,6 +57,7 @@ TWITTER_BROWSER=chrome TWITTER_CHROME_PROFILE="Profile 2" xtractor status --yaml
 chmod 600 ~/.config/xtractor/cookies.json
 XTRACTOR_COOKIE_FILE=~/.config/xtractor/cookies.json xtractor status --yaml
 ```
+If `~/.config/xtractor/cookies.json` is present, it is used automatically without `XTRACTOR_COOKIE_FILE`; the env var still takes precedence when set.
 
 #### Getting cookies with Cookie-Editor
 

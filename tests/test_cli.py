@@ -14,6 +14,7 @@ from xtractor_cli.cli import main
 
 class MainTests(unittest.TestCase):
     @patch("xtractor_cli.cli.subprocess.run")
+    @patch("xtractor_cli.cli.DEFAULT_COOKIE_FILE", Path("/nonexistent/cookies.json"))
     def test_forwards_read_command_and_exit_code(self, run):
         run.return_value.returncode = 7
 
@@ -85,6 +86,77 @@ class MainTests(unittest.TestCase):
                 self.assertEqual(main(["status"]), 2)
 
         run.assert_not_called()
+    @patch("xtractor_cli.cli.subprocess.run")
+    def test_default_cookie_file_used_when_env_unset(self, run):
+        run.return_value.returncode = 0
+        with tempfile.TemporaryDirectory() as directory:
+            cookie_file = Path(directory) / "cookies.json"
+            cookie_file.write_text(
+                json.dumps(
+                    [
+                        {"name": "auth_token", "value": "fake-auth", "domain": ".x.com"},
+                        {"name": "ct0", "value": "fake-ct0", "domain": ".x.com"},
+                    ]
+                ),
+                encoding="utf-8",
+            )
+            cookie_file.chmod(0o600)
+
+            with patch.dict(os.environ, {}, clear=True), patch(
+                "xtractor_cli.cli.DEFAULT_COOKIE_FILE", cookie_file
+            ):
+                self.assertEqual(main(["status", "--yaml"]), 0)
+
+        child_env = run.call_args.kwargs["env"]
+        self.assertEqual(child_env["TWITTER_AUTH_TOKEN"], "fake-auth")
+        self.assertEqual(child_env["TWITTER_CT0"], "fake-ct0")
+
+    @patch("xtractor_cli.cli.subprocess.run")
+    @patch("xtractor_cli.cli.DEFAULT_COOKIE_FILE", Path("/nonexistent/cookies.json"))
+    def test_missing_default_cookie_file_keeps_browser_mode(self, run):
+        run.return_value.returncode = 0
+        with patch.dict(os.environ, {}, clear=True):
+            self.assertEqual(main(["status"]), 0)
+
+        self.assertIsNone(run.call_args.kwargs["env"])
+
+    @patch("xtractor_cli.cli.subprocess.run")
+    def test_env_var_wins_over_default_cookie_file(self, run):
+        run.return_value.returncode = 0
+        with tempfile.TemporaryDirectory() as directory:
+            default_cookie = Path(directory) / "cookies.json"
+            default_cookie.write_text(
+                json.dumps(
+                    [
+                        {"name": "auth_token", "value": "fake-auth", "domain": ".x.com"},
+                        {"name": "ct0", "value": "fake-ct0", "domain": ".x.com"},
+                    ]
+                ),
+                encoding="utf-8",
+            )
+            default_cookie.chmod(0o600)
+            env_cookie = Path(directory) / "env-cookies.json"
+            env_cookie.write_text(
+                json.dumps(
+                    [
+                        {"name": "auth_token", "value": "env-auth", "domain": ".x.com"},
+                        {"name": "ct0", "value": "env-ct0", "domain": ".x.com"},
+                    ]
+                ),
+                encoding="utf-8",
+            )
+            env_cookie.chmod(0o600)
+
+            with patch.dict(
+                os.environ,
+                {"XTRACTOR_COOKIE_FILE": str(env_cookie)},
+                clear=True,
+            ), patch("xtractor_cli.cli.DEFAULT_COOKIE_FILE", default_cookie):
+                self.assertEqual(main(["status", "--yaml"]), 0)
+
+        child_env = run.call_args.kwargs["env"]
+        self.assertEqual(child_env["TWITTER_AUTH_TOKEN"], "env-auth")
+        self.assertEqual(child_env["TWITTER_CT0"], "env-ct0")
     @patch("xtractor_cli.cli.subprocess.run")
     def test_rejects_cookie_names_from_untrusted_domains(self, run):
         with tempfile.TemporaryDirectory() as directory:
