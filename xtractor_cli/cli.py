@@ -1,8 +1,10 @@
+import errno
 import json
 import os
 import stat
 import sys
 from pathlib import Path
+from urllib.parse import urlparse
 
 READ_COMMANDS = frozenset(
     {
@@ -23,9 +25,16 @@ READ_COMMANDS = frozenset(
 )
 TRUSTED_COOKIE_DOMAINS = {"x.com", "twitter.com"}
 DEFAULT_COOKIE_FILE = Path.home() / ".config" / "xtractor" / "cookies.json"
+DEFAULT_CONFIG_FILE = Path.home() / ".config" / "xtractor" / "config.json"
+MAX_CONFIG_BYTES = 64 * 1024
+PROXY_SCHEMES = frozenset({"http", "https", "socks4", "socks5", "socks5h"})
 
 
 class CookieFileError(ValueError):
+    pass
+
+
+class ConfigFileError(ValueError):
     pass
 
 
@@ -79,6 +88,52 @@ def _cookie_env(path: Path) -> dict[str, str]:
     }
 
 
+def _read_proxy(config_path: Path) -> str | None:
+    """Return the proxy value from a JSON config file, or None when absent.
+
+    Fail-closed: anything unreadable, non-regular, oversized, or malformed is
+    a hard error; only a missing file is silently tolerated.
+    """
+    flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0)
+    try:
+        if not hasattr(os, "O_NOFOLLOW") and config_path.is_symlink():
+            raise ConfigFileError("config file must be a regular file, not a symlink")
+        descriptor = os.open(config_path, flags)
+    except ConfigFileError:
+        raise
+    except FileNotFoundError:
+        return None
+    except OSError as exc:
+        if exc.errno == errno.ELOOP:
+            raise ConfigFileError("config file must be a regular file, not a symlink") from exc
+        raise ConfigFileError(f"cannot read config file: {exc}") from exc
+    try:
+        info = os.fstat(descriptor)
+        if not stat.S_ISREG(info.st_mode):
+            raise ConfigFileError("config file must be a regular file")
+        raw = os.read(descriptor, MAX_CONFIG_BYTES + 1)
+    finally:
+        os.close(descriptor)
+    if len(raw) > MAX_CONFIG_BYTES:
+        raise ConfigFileError("config file exceeds 64 KiB")
+    try:
+        payload = json.loads(raw.decode("utf-8"))
+    except (UnicodeError, json.JSONDecodeError) as exc:
+        raise ConfigFileError("config file must contain valid UTF-8 JSON") from exc
+    if not isinstance(payload, dict):
+        raise ConfigFileError("config file must be a JSON object")
+
+    proxy = payload.get("proxy")
+    if proxy is None:
+        return None
+    if not isinstance(proxy, str) or not proxy:
+        raise ConfigFileError("proxy must be a non-empty string")
+    parsed = urlparse(proxy)
+    if parsed.scheme.lower() not in PROXY_SCHEMES or not parsed.netloc:
+        raise ConfigFileError("proxy must use scheme http, https, socks4, socks5, or socks5h")
+    return proxy
+
+
 def main(argv: list[str] | None = None) -> int:
     args = sys.argv[1:] if argv is None else argv
     if not args or args[0] not in READ_COMMANDS:
@@ -96,6 +151,18 @@ def main(argv: list[str] | None = None) -> int:
         except CookieFileError as exc:
             print(f"xtractor: {exc}", file=sys.stderr)
             return 2
+
+    config_file = os.environ.get("XTRACTOR_CONFIG") or (
+        DEFAULT_CONFIG_FILE if DEFAULT_CONFIG_FILE.is_file() else None
+    )
+    if config_file:
+        try:
+            proxy = _read_proxy(Path(config_file).expanduser())
+        except ConfigFileError as exc:
+            print(f"xtractor: config file: {exc}", file=sys.stderr)
+            return 2
+        if proxy is not None and not os.environ.get("TWITTER_PROXY"):
+            updates["TWITTER_PROXY"] = proxy
 
     # In-process backend launch (zipapp-safe). Environment updates are
     # applied only after validation passes; this CLI process exits as soon

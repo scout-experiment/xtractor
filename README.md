@@ -90,6 +90,26 @@ Minimal accepted shape (values shown are placeholders):
 
 Before any cookie reaches the backend, `xtractor_cli/cli.py` validates the file: it must be a regular file (symlinks rejected), owner-readable (`chmod 600`), at most 1 MiB, valid UTF-8 JSON as a Cookie-Editor array, and every cookie domain must be `x.com`, `twitter.com`, or a subdomain. Only `auth_token` and `ct0` are extracted and applied to the process environment after validation passes; nothing else from the file is forwarded.
 
+## Proxy
+
+Optional. When a proxy is set, requests to x.com (API calls and the `ClientTransaction` bootstrap) go through it.
+
+A residential proxy is recommended, with the `socks5h://` scheme (DNS resolves at the proxy). Allowed schemes: `http`, `https`, `socks4`, `socks5`, `socks5h`.
+
+**Config file mode:**
+
+```bash
+mkdir -p ~/.config/xtractor
+printf '{"proxy": "socks5h://user:pass@proxy-host:1080"}' > ~/.config/xtractor/config.json
+chmod 600 ~/.config/xtractor/config.json
+```
+
+The URL may embed credentials, so keep the file owner-readable (`chmod 600`) as good practice.
+
+**Env override:** `export TWITTER_PROXY=...` takes precedence over the config file; a custom config location can be set with `XTRACTOR_CONFIG`.
+
+An invalid config file (bad scheme, non-object JSON, symlink, larger than 64 KiB) exits `2` with a specific `xtractor: config file: ...` error on stderr. Unknown JSON keys are ignored.
+
 ## Usage
 
 Prefer `--json` or `--yaml` for structured results. Supported read commands:

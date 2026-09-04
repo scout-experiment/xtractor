@@ -31,6 +31,20 @@ If `~/.config/xtractor/cookies.json` exists, it is picked up automatically — n
 
 `xtractor` accepts a Cookie-Editor JSON array, checks file type/size/permissions and cookie domains, then exports only `auth_token` and `ct0` to the process environment. Keep cookie files outside repositories. Cookie values must stay outside agent context: never request them in chat or print, copy, commit, or return them.
 
+## Proxy (optional)
+
+Set once per machine in `~/.config/xtractor/config.json`:
+
+```bash
+mkdir -p ~/.config/xtractor
+printf '{"proxy": "socks5h://user:pass@proxy-host:1080"}' > ~/.config/xtractor/config.json
+chmod 600 ~/.config/xtractor/config.json
+```
+
+Allowed schemes: `http`, `https`, `socks4`, `socks5`, `socks5h` (`socks5h` preferred — DNS resolves at the proxy). `TWITTER_PROXY` env var overrides the config file; `XTRACTOR_CONFIG` points at a custom config location. Invalid config exits `2` with a specific error; unknown JSON keys are ignored.
+
+When a proxy is set, x.com requests (API + `ClientTransaction` bootstrap) go through it. If a failure's upstream error mentions the proxy host, report it to the user — do not retry.
+
 ## Read
 
 Prefer `--json` or `--yaml` for structured results.

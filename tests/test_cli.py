@@ -1,3 +1,4 @@
+import io
 import json
 import os
 import sys
@@ -193,6 +194,95 @@ class MainTests(unittest.TestCase):
             "xtractor_cli.cli.DEFAULT_COOKIE_FILE", Path("/nonexistent/cookies.json")
         ):
             self.assertEqual(main(["user", "someone", "--json"]), 3)
+
+
+
+class ProxyConfigTests(unittest.TestCase):
+    """Proxy resolution: TWITTER_PROXY env > config file proxy key > unset."""
+
+    def _config_file(self, directory: str, payload: dict[str, object], name: str = "config.json") -> Path:
+        config_file = Path(directory) / name
+        config_file.write_text(json.dumps(payload), encoding="utf-8")
+        config_file.chmod(0o600)
+        return config_file
+
+    def _backend_main_recorder(self, return_value: int = 0):
+        return patch(
+            "xtractor_cli.backend.main",
+            side_effect=lambda: (self.recorded_env.update(os.environ), return_value)[1],
+        )
+
+    def setUp(self) -> None:
+        self.recorded_env: dict[str, str] = {}
+
+    @patch("xtractor_cli.backend.main")
+    def test_config_proxy_used_when_env_unset(self, backend_main):
+        with tempfile.TemporaryDirectory() as directory:
+            config_file = self._config_file(directory, {"proxy": "socks5h://proxy.example:1080"})
+            with patch.dict(os.environ, {"XTRACTOR_CONFIG": str(config_file)}, clear=True), \
+            self._backend_main_recorder():
+                self.assertEqual(main(["status"]), 0)
+
+        self.assertEqual(self.recorded_env.get("TWITTER_PROXY"), "socks5h://proxy.example:1080")
+
+    @patch("xtractor_cli.cli.DEFAULT_CONFIG_FILE", Path("/nonexistent/config.json"))
+    def test_env_proxy_wins_over_config(self):
+        with tempfile.TemporaryDirectory() as directory:
+            config_file = self._config_file(directory, {"proxy": "socks5h://config.example:1080"})
+            with patch.dict(
+                os.environ,
+                {"XTRACTOR_CONFIG": str(config_file), "TWITTER_PROXY": "socks5h://env.example:1080"},
+                clear=True,
+            ), self._backend_main_recorder():
+                self.assertEqual(main(["status"]), 0)
+
+        self.assertEqual(self.recorded_env.get("TWITTER_PROXY"), "socks5h://env.example:1080")
+
+    @patch("xtractor_cli.backend.main", return_value=0)
+    def test_missing_config_file_leaves_proxy_unset(self, backend_main):
+        snapshot = dict(os.environ)
+        with patch.dict(os.environ, {"XTRACTOR_CONFIG": "/nonexistent/config.json"}, clear=True):
+            self.assertEqual(main(["status"]), 0)
+
+        self.assertEqual(os.environ, snapshot)
+        self.assertNotIn("TWITTER_PROXY", os.environ)
+
+    @patch("xtractor_cli.backend.main")
+    def test_rejects_invalid_proxy_scheme(self, backend_main):
+        with tempfile.TemporaryDirectory() as directory:
+            config_file = self._config_file(directory, {"proxy": "ftp://x"})
+            with patch.dict(os.environ, {"XTRACTOR_CONFIG": str(config_file)}, clear=True), \
+            patch("sys.stderr", new_callable=io.StringIO) as stderr:
+                self.assertEqual(main(["status"]), 2)
+
+        backend_main.assert_not_called()
+        self.assertIn("xtractor: config file:", stderr.getvalue())
+
+    @unittest.skipIf(os.name == "nt", "symlink creation requires extra privileges")
+    @patch("xtractor_cli.backend.main")
+    def test_rejects_config_file_symlink(self, backend_main):
+        with tempfile.TemporaryDirectory() as directory:
+            target = Path(directory) / "config.json"
+            target.write_text(json.dumps({"proxy": "socks5h://proxy.example:1080"}), encoding="utf-8")
+            target.chmod(0o600)
+            config_file = Path(directory) / "config-link.json"
+            config_file.symlink_to(target)
+
+            with patch.dict(os.environ, {"XTRACTOR_CONFIG": str(config_file)}, clear=True):
+                self.assertEqual(main(["status"]), 2)
+
+        backend_main.assert_not_called()
+
+    def test_extra_keys_ignored_and_proxy_applied(self):
+        with tempfile.TemporaryDirectory() as directory:
+            config_file = self._config_file(
+                directory, {"proxy": "socks5h://proxy.example:1080", "future_key": 1}
+            )
+            with patch.dict(os.environ, {"XTRACTOR_CONFIG": str(config_file)}, clear=True), \
+            self._backend_main_recorder():
+                self.assertEqual(main(["status"]), 0)
+
+        self.assertEqual(self.recorded_env.get("TWITTER_PROXY"), "socks5h://proxy.example:1080")
 
 
 class BackendRegressionTests(unittest.TestCase):

@@ -10,8 +10,9 @@ Xtractor is a small Python CLI that exposes read-only Twitter/X operations. It v
 
 1. `main()` reads `argv` and rejects commands outside `READ_COMMANDS` with exit code `2`.
 2. If `XTRACTOR_COOKIE_FILE` is set, or the default `~/.config/xtractor/cookies.json` exists, `_cookie_env()` validates the Cookie-Editor JSON file and extracts `auth_token` and `ct0`.
-3. The wrapper calls the project backend in-process (`xtractor_cli.backend.main()`), which resolves the live `UserTweets` queryId and delegates to the pinned `twitter-cli` CLI. This keeps the wrapper zipapp-safe (no sibling interpreter needed).
-4. A missing backend dependency returns `127`. Validation errors fail before the backend call.
+3. `_read_proxy()` reads the optional proxy from the JSON config file (`XTRACTOR_CONFIG` or `~/.config/xtractor/config.json`; only when `TWITTER_PROXY` is unset) and validates its scheme and shape.
+4. The wrapper calls the project backend in-process (`xtractor_cli.backend.main()`), which resolves the live `UserTweets` queryId and delegates to the pinned `twitter-cli` CLI. This keeps the wrapper zipapp-safe (no sibling interpreter needed).
+5. A missing backend dependency returns `127`. Validation errors fail before the backend call.
 
 Keep this architecture synchronous, stateless, and thin. Put shared security checks at the wrapper boundary rather than in each command path.
 
@@ -56,7 +57,7 @@ Build support comes from Hatchling. If the `build` package is installed, create 
 - `install.sh`: one-command installer (venv, pip install of the git-pinned dependency, skill placement).
 - `pyproject.toml`: package metadata, runtime dependency, wheel contents, and `xtractor` entry point.
 - `xtractor_cli/backend.py`: project-owned launcher that resolves the live `UserTweets` queryId (24h disk cache at `~/.cache/xtractor/queryids.json`, overridable via `XTRACTOR_CACHE_DIR`; refreshes from the community twitter-openapi `placeholder.json`; falls back to a hardcoded constant on any network/cache failure) before delegating to the installed `twitter-cli` CLI.
-- `xtractor_cli/cli.py`: command allowlist, cookie validation, in-process backend delegation, and exit-code behavior.
+- `xtractor_cli/cli.py`: command allowlist, cookie validation, optional proxy config resolution (`XTRACTOR_CONFIG`/`~/.config/xtractor/config.json`, overridable by `TWITTER_PROXY`), in-process backend delegation, and exit-code behavior.
 - `tests/test_cli.py`: complete current behavioral test suite.
 - `skill/SKILL.md`: supported reads, authentication workflow, and upstream failure policy.
 
