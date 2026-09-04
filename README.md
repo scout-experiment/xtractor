@@ -21,19 +21,23 @@
 
 ## Quick start
 
-Install in one command (requires Python >= 3.10 and `git`; installs into a local `.venv` and copies the skill to `~/.agents/skills/xtractor/`):
+The default install downloads the prebuilt release binary to `~/.local/bin/xtractor` — no venv, no `git`, just `python3` >= 3.10 and `gh` (private repo, so download needs `gh` auth; if `gh` is missing or the download fails, the installer builds from source instead). It also copies the skill to `~/.agents/skills/xtractor/` and warns if `~/.local/bin` is not on your `PATH`.
 
 ```bash
 git clone <repo-url> xtractor && cd xtractor
 ./install.sh
 ```
 
-`./install.sh` also puts `xtractor` on PATH via `~/.local/bin/xtractor` (it warns if that directory is not on your `PATH`).
-
 Verify with a first read:
 
 ```bash
-.venv/bin/xtractor status --yaml
+xtractor status --yaml
+```
+
+Alternative — build from this clone instead (requires Python >= 3.10 and `git`; installs into a local `.venv`):
+
+```bash
+./install.sh --from-source
 ```
 
 Alternative — manual setup:
@@ -43,9 +47,7 @@ python -m venv .venv
 .venv/bin/python -m pip install --force-reinstall .
 ```
 
-Alternative — prebuilt single file (no venv, no git): build it once with `bash build_zipapp.sh`, then copy `dist/xtractor.pyz` to any machine with `python3` >= 3.10 (same OS/architecture — it bundles native extensions) and run `python3 xtractor.pyz status --yaml` (or `./xtractor.pyz`; the file is executable).
-
-Or download the prebuilt release (same constraints) — private repo, so this needs `gh` auth; plain `curl -LO` only works once the repo is public:
+Alternative — prebuilt single file (no venv, no git): build it once with `bash build_zipapp.sh`, then copy `dist/xtractor.pyz` to any machine with `python3` >= 3.10 (same OS/architecture — it bundles native extensions) and run `python3 xtractor.pyz status --yaml` (or `./xtractor.pyz`; the file is executable). `./install.sh` does this download for you when `gh` is authenticated.
 
 ```bash
 gh release download v0.1.0 -R scout-experiment/xtractor -p xtractor.pyz
