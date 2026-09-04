@@ -119,7 +119,15 @@ The resolved queryId is cached on disk at `~/.cache/xtractor/queryids.json` with
 
 ## Update policy
 
-`twitter-cli` is a git pin in `pyproject.toml`, not a globally installed tool. On `404` or GraphQL/query mismatches, bump the pinned commit and reinstall from this repository:
+**Prebuilt install (the default from `./install.sh`):** updates come from new GitHub releases. Re-run `./install.sh`, or re-download the binary — the `releases/latest` URL always points at the newest release:
+
+```bash
+curl -LO https://github.com/scout-experiment/xtractor/releases/latest/download/xtractor.pyz
+```
+
+A new release is built automatically by CI whenever a `v*` tag is pushed.
+
+**From source:** `twitter-cli` is a git pin in `pyproject.toml`, not a globally installed tool. On `404` or GraphQL/query mismatches, bump the pinned commit and reinstall from this repository:
 
 ```bash
 .venv/bin/python -m pip install --force-reinstall .
