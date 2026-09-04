@@ -49,10 +49,29 @@ SKILL_DIR="${1:-${XTRACTOR_SKILL_DIR:-${HOME}/.agents/skills}}"
 mkdir -p "${SKILL_DIR}/xtractor" || fail "cannot create skill directory ${SKILL_DIR}/xtractor."
 cp skill/SKILL.md "${SKILL_DIR}/xtractor/SKILL.md" || fail "failed to copy skill/SKILL.md."
 
-# --- Summary ----------------------------------------------------------------
+
+# --- PATH exposure ----------------------------------------------------------
+
+BIN_DIR="${HOME}/.local/bin"
+mkdir -p "${BIN_DIR}" || fail "cannot create ${BIN_DIR}."
+LINK="${BIN_DIR}/xtractor"
+# dist/xtractor.pyz, if present, is intentionally not linked: the venv script wins.
+if [ -e "${LINK}" ] && [ ! -L "${LINK}" ]; then
+    printf 'install.sh: warning: %s exists and is not a symlink; leaving it untouched.\n' "${LINK}" >&2
+else
+    ln -sfn "$(pwd)/.venv/bin/xtractor" "${LINK}" || fail "failed to create symlink ${LINK}."
+fi
+
 
 printf 'Installed xtractor.\n'
 printf '  venv:           %s\n' "$(pwd)/.venv"
 printf '  console script: %s\n' "$(pwd)/.venv/bin/xtractor"
 printf '  skill:          %s\n' "${SKILL_DIR}/xtractor/SKILL.md"
-printf 'Next step: .venv/bin/xtractor status --yaml\n'
+printf '  PATH symlink:   %s -> %s\n' "${LINK}" "$(pwd)/.venv/bin/xtractor"
+case ":${PATH}:" in
+    *":${BIN_DIR}:"*) : ;;
+    *)
+        printf '  warning: %s is not on PATH; add ~/.local/bin to PATH.\n' "${BIN_DIR}" >&2
+        ;;
+esac
+printf 'Next step: xtractor status --yaml\n'

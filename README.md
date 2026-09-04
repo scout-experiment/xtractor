@@ -28,6 +28,8 @@ git clone <repo-url> xtractor && cd xtractor
 ./install.sh
 ```
 
+`./install.sh` also puts `xtractor` on PATH via `~/.local/bin/xtractor` (it warns if that directory is not on your `PATH`).
+
 Verify with a first read:
 
 ```bash
