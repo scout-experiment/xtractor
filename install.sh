@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # One-command installer for xtractor.
 # Default: download the prebuilt xtractor.pyz from the latest GitHub release
-# (no venv, no git needed; requires `gh`). `--from-source` keeps the classic
+# (no venv, no git needed; requires network/curl). `--from-source` keeps the
 # venv + pip build from this clone and falls back to it automatically when
 # the prebuilt download is unavailable.
 set -euo pipefail
@@ -23,8 +23,8 @@ usage() {
 Usage: install.sh [--from-source] [SKILL_DIR]
 
 Default: download the prebuilt xtractor.pyz from the latest GitHub release
-(requires gh) and install it to ${LINK}. No venv, no git. Falls back to a
-source build automatically if the download is unavailable.
+(requires curl/network) and install it to ${LINK}. No venv, no git. Falls
+back to a source build automatically if the download is unavailable.
 
   --from-source   build in ./.venv via pip instead of downloading the release
   SKILL_DIR       skill destination (default: \$XTRACTOR_SKILL_DIR or
@@ -91,8 +91,8 @@ check_path() {
 # Returns nonzero to signal fallback to the source build (except for hard
 # failures, which call fail() and exit).
 install_prebuilt() {
-    if ! command -v gh >/dev/null 2>&1; then
-        printf 'install.sh: prebuilt download skipped (gh not found); falling back to source build.\n' >&2
+    if ! command -v curl >/dev/null 2>&1; then
+        printf 'install.sh: prebuilt download skipped (curl not found); falling back to source build.\n' >&2
         return 1
     fi
 
@@ -102,11 +102,11 @@ install_prebuilt() {
         return 1
     }
     tmp="${tmpdir}/xtractor.pyz"
-    # Fresh empty temp dir, so no --clobber needed. (--output is not
-    # supported by every gh build; --dir + pattern lands exactly one file.)
-    if ! gh release download --repo "$REPO" --pattern xtractor.pyz --dir "$tmpdir"; then
+    # releases/latest/download redirects to the latest release asset; no API
+    # call, no auth, no gh needed.
+    if ! curl -fsSL -o "$tmp" "https://github.com/${REPO}/releases/latest/download/xtractor.pyz"; then
         rm -rf "$tmpdir"
-        printf 'install.sh: prebuilt download failed (gh release download); falling back to source build.\n' >&2
+        printf 'install.sh: prebuilt download skipped (curl download failed); falling back to source build.\n' >&2
         return 1
     fi
 
